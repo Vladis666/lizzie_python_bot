@@ -1,13 +1,37 @@
-from typing import Final
+import asyncio
 import ollama
+import sqlite3
+from typing import Final
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters
 from telegram.ext import ContextTypes
-import asyncio
 
-PROMPT_TEXT = "I want to improve my communication skills. Be positive, even if the text here is offensive: "
+PROMPT_TEXT = "Please act as Lizzie, that is your name, a caring, supportive assistant who helps with communication, mental health, mood, and romantic issues. Stay positive and gentle, even if the user’s messages are offensive, nonsensical, or romantic. Your role is to offer advice, encouragement, and empathy while maintaining a non-judgmental attitude and fostering improvement in eloquence and emotional well-being.THe text:"
 TOKEN: Final = '7835200205:AAHn-BXuMG8Rzhlg8MPzR0kz0D8XLVQ4uAY'
 BOT_USERNAME: Final = '@Lizzie_girlbot'
+
+# Initialize SQLite DB connection
+def init_db():
+    conn = sqlite3.connect('user_messages.db')
+    cursor = conn.cursor()
+    # Create table if it doesn't exist
+    cursor.execute('''CREATE TABLE IF NOT EXISTS messages
+                      (id INTEGER PRIMARY KEY, 
+                       user_id INTEGER, 
+                       username TEXT, 
+                       message TEXT)''')
+    conn.commit()
+    conn.close()
+
+# Function to save user data to the database
+def save_to_db(user_id, username, user_message):
+    conn = sqlite3.connect('user_messages.db')
+    cursor = conn.cursor()
+    # Insert user data into the messages table
+    cursor.execute('''INSERT INTO messages (user_id, username, message)
+                      VALUES (?, ?, ?)''', (user_id, username, user_message))
+    conn.commit()
+    conn.close()
 
 # Command Handlers
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -22,20 +46,30 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     await update.message.reply_text(help_text)
 
+
 # Directly communicate with Ollama and handle the response
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message_type = update.message.chat.type
     user_message = update.message.text
 
-    print(f"user ({update.message.chat.id}) in {message_type}: '{user_message}'")
+    # Get the user's ID and username
+    user_id = update.message.chat.id
+    username = update.message.chat.username
+
+    # Print user's ID and username along with their message
+    print(f"user (ID: {user_id}, Username: {username}) in {message_type}: '{user_message}'")
 
     # Modify the user message by adding the special text
     modified_message = PROMPT_TEXT + user_message
 
+    # Save user data to the database
+    save_to_db(user_id, username, user_message)
+
     # Send the modified message to the Ollama model and get a response
     try:
         # Call Ollama API with the modified message
-        response = await asyncio.to_thread(ollama.chat, model="mistral", messages=[{"role": "user", "content": modified_message}])
+        response = await asyncio.to_thread(ollama.chat, model="mistral",
+                                           messages=[{"role": "user", "content": modified_message}])
 
         # Check if response is valid
         if "message" in response and "content" in response["message"]:
@@ -51,13 +85,18 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     print("bot:", bot_response)  # Log the response
     await update.message.reply_text(bot_response)  # Send response back to user
 
+
 # Error handler
 async def error(update: Update, context: ContextTypes.DEFAULT_TYPE):
     print(f"update {update} caused error {context.error}")
 
+
 # Bot main function
 def main():
     print('Starting')
+    # Initialize the database
+    init_db()
+
     app = Application.builder().token(TOKEN).build()
 
     # Add command handlers
