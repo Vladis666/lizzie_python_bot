@@ -23,7 +23,7 @@ def init_db():
     conn.commit()
     conn.close()
 
-# Function to save user data to the database
+# Function to save user data to the databasehttps://github.com/Vladis666/lizzie_python_bot
 def save_to_db(user_id, username, user_message):
     conn = sqlite3.connect('user_messages.db')
     cursor = conn.cursor()
